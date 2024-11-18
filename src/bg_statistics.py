@@ -2,7 +2,9 @@ import pandas as pd
 import numpy as np
 
 
-def calculate_segment_statistics(segments_dict, is_resized=False):
+def calculate_segment_statistics(
+    segments_dict, nan_segments_dict=None, is_resized=False
+):
     """Calculate statistics for given segment dictionaries."""
     statistics = {}
 
@@ -12,9 +14,9 @@ def calculate_segment_statistics(segments_dict, is_resized=False):
         else:
             cont_lengths = segments_dict[patient_id]["segment_lengths"]
 
-        # nan_lengths = []
-        # if nan_segments_dict:
-        #     nan_lengths = nan_segments_dict[patient_id]['segment_lengths']
+        nan_lengths = []
+        if nan_segments_dict:
+            nan_lengths = nan_segments_dict[patient_id]["segment_lengths"]
 
         statistics[patient_id] = {
             "num_cont_seg": len(cont_lengths),
@@ -25,13 +27,21 @@ def calculate_segment_statistics(segments_dict, is_resized=False):
             ),
         }
 
-        # if nan_segments_dict:
-        #     statistics[patient_id].update({
-        #         'num_nan_seg': len(nan_lengths),
-        #         'min_nan_length': np.min(nan_lengths) if len(nan_lengths) > 0 else 0,
-        #         'max_nan_length': np.max(nan_lengths) if len(nan_lengths) > 0 else 0,
-        #         '70_percent_nan_length': np.percentile(nan_lengths, 70) if len(nan_lengths) > 0 else 0,
-        #     })
+        if nan_segments_dict:
+            statistics[patient_id].update(
+                {
+                    "num_nan_seg": len(nan_lengths),
+                    "min_nan_length": (
+                        np.min(nan_lengths) if len(nan_lengths) > 0 else 0
+                    ),
+                    "max_nan_length": (
+                        np.max(nan_lengths) if len(nan_lengths) > 0 else 0
+                    ),
+                    "70_percent_nan_length": (
+                        np.percentile(nan_lengths, 70) if len(nan_lengths) > 0 else 0
+                    ),
+                }
+            )
 
     return pd.DataFrame(statistics).T
 

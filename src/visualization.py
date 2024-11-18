@@ -6,7 +6,11 @@ def plot_patient_data_with_quantile(
     original_data: dict, quantile_cut_data: dict, quantile_cutoff: float = 0.8
 ):
     """Visualizes the original and quantile-cut data for each patient side-by-side with shared y-axis limits, using days as the x-axis."""
-    fig, axes = plt.subplots(nrows=12, ncols=2, figsize=(15, 30))
+    fig, axes = plt.subplots(
+        nrows=len(original_data),
+        ncols=2,
+        figsize=(20, 3 * len(original_data)),
+    )
     axes = axes.flatten()
 
     for i, patient_id in enumerate(original_data.keys()):
@@ -50,7 +54,8 @@ def plot_patient_data_with_quantile(
         axes[2 * i + 1].grid(True)
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("figures/plot_patient_data_with_quantile.png")
+    # plt.show()
 
 
 def visualize_original_interpolated(
@@ -61,7 +66,14 @@ def visualize_original_interpolated(
     method_name="Polynomian",
 ):
     """Visualize original and interpolated test data segments for each patient."""
-    fig, axes = plt.subplots(nrows=12, ncols=2, figsize=(15, 30))
+    fig, axes = plt.subplots(
+        nrows=len(cleaned_original_segments),
+        ncols=2,
+        figsize=(
+            20,
+            3 * len(cleaned_original_segments),
+        ),
+    )
     axes = axes.flatten()
 
     for i, patient_id in enumerate(cleaned_original_segments.keys()):
@@ -71,16 +83,11 @@ def visualize_original_interpolated(
         original_segment = np.concatenate(cleaned_censored_segments[patient_id])
         interpolated_segment = np.concatenate(interpolated_segments[patient_id])
         original_patient_data = np.concatenate(cleaned_original_segments[patient_id])
-        y_min = min(
-            interpolated_segment.min(),
-            original_segment.min(),
-            original_patient_data.min(),
-        )
-        y_max = max(
-            interpolated_segment.max(),
-            original_segment.max(),
-            original_patient_data.max(),
-        )
+        # original_segment = cleaned_censored_segments[patient_id][0]
+        # interpolated_segment = interpolated_segments[patient_id][0]
+        # original_patient_data = cleaned_original_segments[patient_id][0]
+        y_min = min(interpolated_segment.min(), original_patient_data.min())
+        y_max = max(interpolated_segment.max(), original_patient_data.max())
 
         axes[2 * i + 1].plot(
             interpolated_segment, color="orange", label="Interpolated Data", alpha=0.8
@@ -110,4 +117,5 @@ def visualize_original_interpolated(
         axes[2 * i].set_ylabel("CBG (mg/dL)")
 
     plt.tight_layout()
-    plt.show()
+    plt.savefig("figures/" + method_name + ".png")
+    # plt.show()

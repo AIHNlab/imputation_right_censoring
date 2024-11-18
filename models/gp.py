@@ -10,6 +10,23 @@ from sklearn.gaussian_process.kernels import (
     ExpSineSquared,
     Matern,
 )
+from scipy.optimize import minimize
+from sklearn.utils.optimize import _check_optimize_result
+
+
+# Define a custom optimizer to control max_iter
+def custom_optimizer(obj_func, initial_theta, bounds):
+    opt_res = minimize(
+        obj_func,
+        initial_theta,
+        method="L-BFGS-B",
+        jac=True,
+        bounds=bounds,
+        options={"maxiter": 2e05, "gtol": 1e-06},
+    )
+    # _check_optimize_result("lbfgs", opt_res)
+    theta_opt, func_min = opt_res.x, opt_res.fun
+    return theta_opt, func_min
 
 
 def train_gpr(
@@ -27,9 +44,24 @@ def train_gpr(
 
     # If no kernel is provided this is a default one. (We must test out, see: https://scikit-learn.org/1.5/modules/gaussian_process.html)
     if kernel is None:
-        # kernel = RBF() + WhiteKernel(noise_level=1e-2, noise_level_bounds=(1e-10, 1e1)) # <class 'sklearn.gaussian_process.kernels.Sum'>
-        # kernel = RBF(length_scale=10) + ExpSineSquared(length_scale=5, periodicity=24) + WhiteKernel(noise_level=1e-2)
-        kernel = Matern(length_scale=1, nu=1.5)
+        # kernel = RBF() + WhiteKernel(
+        #     noise_level=1e-2, noise_level_bounds=(1e-10, 1e1)
+        # )  # <class 'sklearn.gaussian_process.kernels.Sum'>
+        # kernel = (
+        #     RBF(length_scale=10)
+        #     + ExpSineSquared(length_scale=10, periodicity=24)
+        #     + WhiteKernel(noise_level=1e-2)
+        # )
+        maternParams = {
+            "length_scale": 1.0,
+            # "length_scale_bounds": (1e-15, 1e15),
+            "nu": 1.5,
+        }
+        kernel = Matern(**maternParams)
+
+        # kernel = 1.0 * RBF(
+        #     length_scale=1e1, length_scale_bounds=(1e-2, 1e3)
+        # ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e1))
 
     # Ensure timeseries is a 1D array
     if timeseries.ndim == 2 and timeseries.shape[1] == 1:
@@ -43,10 +75,15 @@ def train_gpr(
     train_X = np.where(~np.isnan(timeseries))[0]  # Indices where values are not NaN
     train_y = timeseries[train_X]  # Actual values at those indices
     train_X = train_X.reshape((-1, 1))
-    # print("train_X = ", train_X)
 
     # Create a GPR newly. alpha is the noise level. Normalize true.
-    gpr = GaussianProcessRegressor(kernel=kernel, alpha=0.2, normalize_y=True)
+    gpr = GaussianProcessRegressor(
+        kernel=kernel,
+        n_restarts_optimizer=55,
+        normalize_y=True,
+        # random_state=0,
+        optimizer=custom_optimizer,
+    )
 
     # Actual training
     gpr.fit(train_X, train_y)
