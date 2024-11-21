@@ -2,10 +2,12 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import GPy
 
 from src.data_processing import (
     load_data_ohio,
     load_data_iso,
+    load_data_cap,
     apply_quantile_cut,
     get_continuous_segments_loc,
     clean_segment_and_align,
@@ -19,11 +21,7 @@ from src.visualization import (
 )
 from models.baselines import naive_baseline_imputation
 from models.gp import train_gpr, inference_gpr
-from src.bg_statistics import (
-    calculate_segment_statistics,
-    calculate_mean_sd,
-    compare_statistics,
-)
+from src.bg_statistics import calculate_segment_statistics, compare_statistics
 
 if __name__ == "__main__":
     # Argument parser for command-line options
@@ -47,6 +45,14 @@ if __name__ == "__main__":
         default="polynomial",
         help="Method to test (default polynomial).",
     )
+
+    parser.add_argument(
+        "--kernel",
+        type=str,
+        default="matern32",
+        help="Kernel for gp (default matern32), options: matern32, matern52.",
+    )
+
     parser.add_argument(
         "--output_dir",
         type=str,
@@ -73,7 +79,6 @@ if __name__ == "__main__":
             "591",
             "596",
         ]
-        patient_ids = ["540"]
         train_data_dict = {}
         test_data_dict = {}
         all_data_dict = {}
@@ -126,11 +131,39 @@ if __name__ == "__main__":
         ]
         patient_ids = list(set(patient_ids) - set(to_remove))
         all_data_dict = {}
-        patient_ids = ["161"]
+
         for patient_id in patient_ids:
             all_data = load_data_iso(patient_id)
             all_data_dict[patient_id] = all_data
 
+        patient_ids_cap = [
+            "0620",
+            "627",
+            "0639",
+            "0652",
+            "0675",
+            "CGM_007",
+            "CGM_008",
+            "CGM_009",
+            "CGM_011",
+            "CGM_013",
+            "CGM_014",
+            "CGM_017",
+            "CGM_018",
+            "CGM_020",
+            "CGM_021",
+            "CGM_022",
+            "CGM_023",
+            "CGM_024",
+            "CGM_025",
+        ]
+        for patient_id in patient_ids_cap:
+            all_data = load_data_cap(patient_id)
+            all_data_dict[patient_id] = all_data
+
+        patient_ids = patient_ids + patient_ids_cap
+
+    print("all data = ", len(all_data_dict))
     # Step 2: Apply percentile cut
     print(f"Applying {args.percentile * 100}% percentile cutoff...")
     quantile_cut_data, thresh_data = apply_quantile_cut(
@@ -220,7 +253,6 @@ if __name__ == "__main__":
     # contain segments without leading or trailing NaN values, and they are aligned.
     # print("Cleaned Sensored Segments:", cleaned_sensored_segments)
     # print("Cleaned Original Segments:", cleaned_original_segments)
-    original_stats = calculate_mean_sd(cleaned_original_segments)
     if args.method == "polynomial":
         interpolated_segments_poly = naive_baseline_imputation(
             data=cleaned_censored_segments, method="polynomial", order=2
@@ -232,11 +264,17 @@ if __name__ == "__main__":
             thresh_data,
             method_name="Polynomian",
         )
-        interpolated_stats_poly = calculate_mean_sd(interpolated_segments_poly)
-        comparison = compare_statistics(
-            original_stats, interpolated_stats_poly, "Polynomial"
+        df_poly = compare_statistics(
+            cleaned_original_segments,
+            cleaned_censored_segments,
+            interpolated_segments_poly,
         )
-        print(comparison)
+        if args.dataset == "ohio":
+            numeric_cols = df_poly.select_dtypes(include="number")
+            df_poly[numeric_cols.columns] = (
+                df_poly.select_dtypes(include="number") * 0.0555
+            )
+        print(df_poly)
     elif args.method == "cubic":
         interpolated_segments_cubic = naive_baseline_imputation(
             data=cleaned_censored_segments, method="cubic"
@@ -248,11 +286,17 @@ if __name__ == "__main__":
             thresh_data,
             method_name="Cubic",
         )
-        interpolated_stats_cubic = calculate_mean_sd(interpolated_segments_cubic)
-        comparison = compare_statistics(
-            original_stats, interpolated_stats_cubic, "Cubic"
+        df_cubic = compare_statistics(
+            cleaned_original_segments,
+            cleaned_censored_segments,
+            interpolated_segments_cubic,
         )
-        print(comparison)
+        if args.dataset == "ohio":
+            numeric_cols = df_cubic.select_dtypes(include="number")
+            df_cubic[numeric_cols.columns] = (
+                df_cubic.select_dtypes(include="number") * 0.0555
+            )
+        print(df_cubic)
     elif args.method == "ffill":
         interpolated_segments_ffill = naive_baseline_imputation(
             data=cleaned_censored_segments, method="ffill"
@@ -264,49 +308,51 @@ if __name__ == "__main__":
             thresh_data,
             method_name="Ffill",
         )
-        interpolated_stats_ffill = calculate_mean_sd(interpolated_segments_ffill)
-        comparison = compare_statistics(
-            original_stats, interpolated_stats_ffill, "Ffill"
+        df_ffill = compare_statistics(
+            cleaned_original_segments,
+            cleaned_censored_segments,
+            interpolated_segments_ffill,
         )
-        print(comparison)
+        if args.dataset == "ohio":
+            numeric_cols = df_ffill.select_dtypes(include="number")
+            df_ffill[numeric_cols.columns] = (
+                df_ffill.select_dtypes(include="number") * 0.0555
+            )
+        print(df_ffill)
     elif args.method == "gp":
         interpolated_segments_gp = {}
         for patient_id, segments in cleaned_censored_segments.items():
             interpolated_segments_gp[patient_id] = []
-            segment_no = 0
+            all_segments = np.concatenate(segments)
+            ind_all = np.where(~np.isnan(all_segments))[0]
+            all_segments_actual = all_segments[ind_all]
+            var = np.std(all_segments_actual) ** 2
+            mean = np.mean(all_segments_actual)
             for segment in segments:
                 # Convert segment to DataFrame to use interpolation functions
                 segment_df = pd.DataFrame(segment, columns=["cbg"])
-
                 # Check if there are any NaN values in the segment
                 if segment_df["cbg"].isna().any():
-                    # print("segment_df = ", segment_df)
                     # Only train and infer if there are NaN values
-                    gpr = train_gpr(
-                        np.array(segment_df),
-                        "gpr_" + str(patient_id) + "_" + str(segment_no),
-                        kernel=None,
-                    )
+                    gpr = train_gpr(np.array(segment_df), kernel=args.kernel, var=var)
                     indices, interpolated_segment, std = inference_gpr(
                         np.array(segment_df), gpr
                     )
-                    # print("std = ", std)
+
                     # Create a copy of the original segment and replace NaNs with interpolated values
                     indices = indices.flatten()  # Ensure `indices` is a flat array
                     full_interpolated_segment = np.array(segment_df).flatten().copy()
-                    # print("indices = ", indices)
-                    # print("interpolated_segment = ", interpolated_segment)
+
                     full_interpolated_segment[indices] = np.array(
                         interpolated_segment
                     ).flatten()  # Replace NaNs with interpolated values
-                    # print("full_interpolated_segment = ", full_interpolated_segment)
                     interpolated_segments_gp[patient_id].append(
                         full_interpolated_segment
                     )
+
                     # plt.figure()
                     # plt.plot(full_interpolated_segment)
                     # plt.plot(np.array(segment_df).flatten().copy())
-                    # plt.show()
 
                 else:
                     # If no NaN values, add the original segment without modification
@@ -314,7 +360,6 @@ if __name__ == "__main__":
                         np.array(segment_df).flatten()
                     )
 
-                segment_no += 1
         # break
         visualize_original_interpolated(
             interpolated_segments_gp,
@@ -323,11 +368,12 @@ if __name__ == "__main__":
             thresh_data,
             method_name="Gaussian Process",
         )
-        interpolated_stats_gp = calculate_mean_sd(interpolated_segments_gp)
-        compare_statistics(original_stats, interpolated_stats_gp, "GP")
-
-# # Step 4: Save processed data (if specified)
-# if args.output_dir:
-#     print(f"Saving results to {args.output_dir}...")
-#     # Save data or plots (implement logic in visualization or data_processing)
-#     save_results(args.output_dir, quantile_cut_data, thresholds)
+        df_gp = compare_statistics(
+            cleaned_original_segments,
+            cleaned_censored_segments,
+            interpolated_segments_gp,
+        )
+        if args.dataset == "ohio":
+            numeric_cols = df_gp.select_dtypes(include="number")
+            df_gp[numeric_cols.columns] = df_gp.select_dtypes(include="number") * 0.0555
+        print(df_gp)

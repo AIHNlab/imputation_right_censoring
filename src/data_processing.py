@@ -62,6 +62,25 @@ def load_data_iso(patient_id):
     return data
 
 
+def load_data_cap(patient_id):
+    """Loads training data from the 2018 and 2020 datasets.
+    Optionally includes test data, but only for final evaluation.
+    Returns both raw (unmodified) and processed (with elapsed time columns) data."""
+
+    base_paths = "data/CGM-data imputationmodel CGM-CAP study"
+    path = f"{base_paths}/{patient_id}.csv"
+
+    data = pd.read_csv(path, skiprows=11)
+    # print(patient_id, " df = ", data)
+    # print("data heads = ", data.head())  # See the first few rows
+    data = data[["Sensorglukose (mmol/l)", "Dato"]]
+    data["minutes_elapsed"] = np.arange(0, len(data) * 5, 5)
+    data["days_elapsed"] = data["minutes_elapsed"] / 1440
+    data.rename(columns={"Sensorglukose (mmol/l)": "cbg"}, inplace=True)
+
+    return data
+
+
 def apply_quantile_cut(
     patient_rawdata_dict: dict, nan_above_quantile: float = 0.8
 ) -> dict:

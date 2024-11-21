@@ -4,14 +4,21 @@ import joblib
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
-    ConstantKernel as C,
+    ConstantKernel,
     RBF,
     WhiteKernel,
     ExpSineSquared,
     Matern,
+    DotProduct,
 )
 from scipy.optimize import minimize
 from sklearn.utils.optimize import _check_optimize_result
+
+from sklearn.gaussian_process.kernels import PairwiseKernel
+from sklearn.metrics.pairwise import polynomial_kernel
+
+import GPy
+from GPy.models import GPRegression
 
 
 # Define a custom optimizer to control max_iter
@@ -29,8 +36,8 @@ def custom_optimizer(obj_func, initial_theta, bounds):
     return theta_opt, func_min
 
 
-def train_gpr(
-    timeseries: np.ndarray, output_model_filename: str, kernel=None
+def train_gpr_sklearn(
+    timeseries: np.ndarray, kernel=None, var=1
 ) -> GaussianProcessRegressor:
     """
     Train a GPR model on a given timeseries data array.
@@ -44,24 +51,13 @@ def train_gpr(
 
     # If no kernel is provided this is a default one. (We must test out, see: https://scikit-learn.org/1.5/modules/gaussian_process.html)
     if kernel is None:
-        # kernel = RBF() + WhiteKernel(
-        #     noise_level=1e-2, noise_level_bounds=(1e-10, 1e1)
-        # )  # <class 'sklearn.gaussian_process.kernels.Sum'>
-        # kernel = (
-        #     RBF(length_scale=10)
-        #     + ExpSineSquared(length_scale=10, periodicity=24)
-        #     + WhiteKernel(noise_level=1e-2)
-        # )
         maternParams = {
-            "length_scale": 1.0,
+            "length_scale": 10,
             # "length_scale_bounds": (1e-15, 1e15),
             "nu": 1.5,
         }
-        kernel = Matern(**maternParams)
-
-        # kernel = 1.0 * RBF(
-        #     length_scale=1e1, length_scale_bounds=(1e-2, 1e3)
-        # ) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e1))
+        # kernel = ConstantKernel(10.0, (1e-4, 1e1)) * Matern(**maternParams)
+        kernel = var * Matern(**maternParams)
 
     # Ensure timeseries is a 1D array
     if timeseries.ndim == 2 and timeseries.shape[1] == 1:
@@ -81,23 +77,18 @@ def train_gpr(
         kernel=kernel,
         n_restarts_optimizer=55,
         normalize_y=True,
-        # random_state=0,
+        random_state=0,
+        alpha=1e-3,
         optimizer=custom_optimizer,
     )
 
     # Actual training
     gpr.fit(train_X, train_y)
 
-    # # Saving the model file so we do not lose the training.
-    # if output_model_filename is not None:
-    #     out:str = 'gpr_models/'+output_model_filename+'.joblib'
-    #     joblib.dump(gpr, out, compress=True) # joblib files are mich smaller than pickle
-    #     print(f"Training finished and joblib file exported to {out}")
-
     return gpr
 
 
-def inference_gpr(
+def inference_gpr_sklearn(
     timeseries: np.ndarray, input_model: str | GaussianProcessRegressor
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -124,3 +115,61 @@ def inference_gpr(
     predict_y, std_y = gpr.predict(predict_X, return_std=True)
 
     return (predict_X, predict_y, std_y)
+
+
+def train_gpr(timeseries: np.ndarray, kernel="matern32", var=1) -> GPRegression:
+
+    # If no kernel is provided this is a default one. (We must test out, see: https://scikit-learn.org/1.5/modules/gaussian_process.html)
+    if kernel == "matern32":
+        kernel = GPy.kern.sde_Matern32(input_dim=1, variance=var, lengthscale=1.0)
+    elif kernel == "matern52":
+        kernel = GPy.kern.sde_Matern52(input_dim=1, variance=var, lengthscale=1.0)
+    elif kernel == "squared_exponential":
+        kernel = GPy.kern.RBF(input_dim=1, variance=var, lengthscale=1.0)
+
+    # Ensure timeseries is a 1D array
+    if timeseries.ndim == 2 and timeseries.shape[1] == 1:
+        timeseries = timeseries.flatten()
+    elif timeseries.ndim != 1:
+        raise ValueError(
+            "Expected timeseries to be a 1D array or a 2D array with shape (n_samples, 1)."
+        )
+
+    # The training data is composed of the indices of valid values and the values themselves. (More features would be easily implemented -> computation time?)
+    train_X = np.where(~np.isnan(timeseries))[0]  # Indices where values are not NaN
+    train_y = timeseries[train_X]  # Actual values at those indices
+    train_X = train_X.reshape((-1, 1))
+    train_y = train_y.reshape(-1, 1)
+
+    # Create a GPR newly. alpha is the noise level. Normalize true.
+    gpr = GPy.models.GPRegression(
+        train_X, train_y, kernel, normalizer=False, noise_var=1e-4
+    )
+
+    # Optimize the model hyperparameters
+    gpr.optimize(max_iters=100)  # Adjust iterations as needed
+
+    return gpr
+
+
+def inference_gpr(
+    timeseries: np.ndarray, input_model: str | GPRegression
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    # Load the model from file
+    if isinstance(input_model, str):
+        input: str = "gpr_models/" + input_model + ".joblib"
+        gpr = joblib.load(input)
+    elif isinstance(input_model, GPRegression):
+        gpr = input_model
+    else:
+        print("Invalid model passed to infer. Returning.")
+        return
+
+    # Prediciotn
+    predict_X = np.where(np.isnan(timeseries))[0]
+    if predict_X.size == 0:
+        raise ValueError("No missing values found in the timeseries for inference.")
+    predict_X = predict_X.reshape((-1, 1))
+    predict_y, var_y = gpr.predict(predict_X)
+
+    return predict_X, predict_y, np.sqrt(var_y)

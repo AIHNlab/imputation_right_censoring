@@ -46,28 +46,75 @@ def calculate_segment_statistics(
     return pd.DataFrame(statistics).T
 
 
-def calculate_mean_sd(data_segments):
-    """Calculate mean and standard deviation for each patient's data segments."""
+def calculate_statistics(data_segments):
+    """
+    Calculate mean, standard deviation, and coefficient of variation for each patient's data segments.
+    """
     stats = {}
     for patient_id, segments in data_segments.items():
         all_data = np.concatenate(segments)
         mean_glucose = np.nanmean(all_data)
         std_glucose = np.nanstd(all_data)
-        stats[patient_id] = {"Mean": mean_glucose, "Standard Deviation": std_glucose}
+        cv_glucose = std_glucose / mean_glucose
+        stats[patient_id] = {"Mean": mean_glucose, "SD": std_glucose, "CV": cv_glucose}
     return pd.DataFrame(stats).T
 
 
-def compare_statistics(original_stats, interpolated_stats, method_name):
-    """Compare original and interpolated statistics."""
-    comparison = original_stats.copy()
-    comparison.columns = ["Original Mean", "Original SD"]
-    comparison["Interpolated Mean"] = interpolated_stats["Mean"]
-    comparison["Interpolated SD"] = interpolated_stats["Standard Deviation"]
-    comparison["Mean Difference"] = (
-        comparison["Interpolated Mean"] - comparison["Original Mean"]
-    )
-    comparison["SD Difference"] = (
-        comparison["Interpolated SD"] - comparison["Original SD"]
-    )
-    comparison
-    return comparison
+def compare_statistics(bg_original, bg_before_imputation, bg_after_imputation):
+    """
+    Compare statistics for bias and MSE between original and imputed data.
+
+    Args:
+        bg_original: Dictionary of original glucose data (per patient).
+        bg_before_imputation: Dictionary of glucose data before imputation (per patient).
+        bg_after_imputation: Dictionary of glucose data after imputation (per patient).
+        dataset: Name of the dataset for labeling purposes.
+
+    Returns:
+        DataFrame containing Bias and MSE before and after imputation for each metric.
+    """
+    # Calculate statistics
+    statistic_original = calculate_statistics(bg_original)
+    statistic_before_imputation = calculate_statistics(bg_before_imputation)
+    statistic_after_imputation = calculate_statistics(bg_after_imputation)
+
+    # Prepare results dictionary
+    results = {
+        "Metric": [],
+        "Bias Before Imputation": [],
+        "Bias After Imputation": [],
+        "MSE Before Imputation": [],
+        "MSE After Imputation": [],
+    }
+
+    # Metrics to compare
+    metrics = ["Mean", "SD", "CV"]
+
+    for metric in metrics:
+        # Bias calculations
+        bias_before = (
+            statistic_before_imputation[metric] - statistic_original[metric]
+        ).mean()
+        bias_after = (
+            statistic_after_imputation[metric] - statistic_original[metric]
+        ).mean()
+
+        # MSE calculations
+        mse_before = (
+            (statistic_before_imputation[metric] - statistic_original[metric]) ** 2
+        ).mean()
+        mse_after = (
+            (statistic_after_imputation[metric] - statistic_original[metric]) ** 2
+        ).mean()
+
+        # Append to results
+        results["Metric"].append(metric)
+        results["Bias Before Imputation"].append(bias_before)
+        results["Bias After Imputation"].append(bias_after)
+        results["MSE Before Imputation"].append(mse_before)
+        results["MSE After Imputation"].append(mse_after)
+
+    # Return results as DataFrame
+    results_df = pd.DataFrame(results)
+
+    return results_df
