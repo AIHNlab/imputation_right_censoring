@@ -2,18 +2,15 @@ import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import GPy
+
 
 from src.data_processing import (
-    load_data_ohio,
     load_data_iso,
     load_data_cap,
-    apply_quantile_cut,
-    get_continuous_segments_loc,
-    clean_segment_and_align,
-    get_nan_segments_loc,
-    remove_small_data_segments,
-    resize_segments_uniform,
+    load_data_cap1,
+    load_data_ohio,
+    get_daily_segments_loc,
+    check_and_filter_nan_segments,
 )
 from src.visualization import (
     plot_patient_data_with_quantile,
@@ -21,7 +18,7 @@ from src.visualization import (
 )
 from models.baselines import naive_baseline_imputation
 from models.gp import train_gpr, inference_gpr
-from src.bg_statistics import calculate_segment_statistics, compare_statistics
+from src.bg_statistics import compare_statistics
 
 if __name__ == "__main__":
     # Argument parser for command-line options
@@ -90,13 +87,14 @@ if __name__ == "__main__":
             test_data_dict[patient_id] = test_data
             all_data_dict[patient_id] = all_data
     elif args.dataset == "iso":
-        patient_ids = [str(i) for i in range(102, 223)]
+        patient_ids = [str(i) for i in range(102, 224)]
         to_remove = [
             "103",
             "108",
             "110",
             "113",
             "115",
+            "116",  # Not sure yet
             "122",
             "126",
             "127",
@@ -136,8 +134,8 @@ if __name__ == "__main__":
             all_data = load_data_iso(patient_id)
             all_data_dict[patient_id] = all_data
 
-        patient_ids_cap = [
-            "0620",
+        patient_ids_cap = ["0620"]
+        patient_ids_cap1 = [
             "627",
             "0639",
             "0652",
@@ -161,93 +159,115 @@ if __name__ == "__main__":
             all_data = load_data_cap(patient_id)
             all_data_dict[patient_id] = all_data
 
-        patient_ids = patient_ids + patient_ids_cap
+        for patient_id in patient_ids_cap1:
+            all_data = load_data_cap1(patient_id)
+            all_data_dict[patient_id] = all_data
+
+        patient_ids = patient_ids + patient_ids_cap + patient_ids_cap1
 
     print("all data = ", len(all_data_dict))
-    # Step 2: Apply percentile cut
-    print(f"Applying {args.percentile * 100}% percentile cutoff...")
-    quantile_cut_data, thresh_data = apply_quantile_cut(
-        all_data_dict, nan_above_quantile=args.percentile
-    )
-
-    # Step 3: Visualize results
-    print("Generating plots...")
-    plot_patient_data_with_quantile(
-        all_data_dict, quantile_cut_data, quantile_cutoff=args.percentile
-    )
-
     # 1. create continues
     cont_segments_dict = {}
-    nan_segments_dict = {}
+    filtered_segments_dict = {}
 
     for patient_id in patient_ids:
         patient_data = all_data_dict
-        cont_segments_loc = get_continuous_segments_loc(
-            {patient_id: patient_data[patient_id]}, "cbg"
-        )
-        nan_segments_loc = get_nan_segments_loc(
+        cont_segments_loc = get_daily_segments_loc(
             {patient_id: patient_data[patient_id]}, "cbg"
         )
         cont_segments_dict[patient_id] = cont_segments_loc[patient_id]
-        nan_segments_dict[patient_id] = nan_segments_loc[patient_id]
+        filtered_segments = check_and_filter_nan_segments(
+            patient_data[patient_id], cont_segments_dict[patient_id], "cbg"
+        )
+        filtered_segments_dict[patient_id] = filtered_segments
 
-    kept_cont_segments, kept_cont_segments_df = remove_small_data_segments(
-        cont_segments_dict, nan_segments_dict
-    )
-    original_segments = resize_segments_uniform(kept_cont_segments, all_data_dict)
-    resized_cont_segments_df = calculate_segment_statistics(
-        original_segments, is_resized=True
-    )
+    # Initialize a new dictionary to store the segmented data per patient
+    segmented_data_dict = {}
+    segment_stats_dict = {}
+    # Loop over each patient and extract their segments based on the filtered indices
+    for patient_id, filtered_segments in filtered_segments_dict.items():
+        # Get the start indices for the patient's filtered segments
+        start_indices = filtered_segments["start_indices"]
+        end_indices = filtered_segments["end_indices"]
+
+        # Extract the corresponding data for each segment
+        patient_data = all_data_dict[
+            patient_id
+        ]  # Assuming this is the full data for the patient
+
+        # Initialize a list to store the segmented data for the patient
+        patient_segments = []
+        patient_segment_stats = []
+
+        # Loop over the start indices to slice the data for each segment
+        for i in range(
+            len(start_indices)
+        ):  # Loop until the second-to-last index (since we're using pairs)
+            start_idx = start_indices[i]
+            end_idx = end_indices[i]
+
+            # Extract the segment for this pair of indices
+            segment_data = patient_data[start_idx : end_idx + 1]["cbg"]
+
+            # Calculate the length of the segment
+            segment_length = len(segment_data)
+
+            # Count the number of NaN values in the segment
+            num_nan_values = np.sum(np.isnan(segment_data))
+
+            if segment_length == 288:
+                # Append the segment to the patient's list of segments
+                patient_segments.append(np.array(segment_data))
+
+                # Store the statistics (length and NaN count) for this segment
+                patient_segment_stats.append(
+                    {"segment_length": segment_length, "num_nan_values": num_nan_values}
+                )
+
+        # Store the segmented data in the dictionary, using the patient_id as the key
+        segmented_data_dict[patient_id] = patient_segments
+        segment_stats_dict[patient_id] = patient_segment_stats
+
+    original_segments = segmented_data_dict
 
     # 2. censored segments
     # Dictionary for storing the interpolated data for each patient
     censored_segments = {}
+    censored_thresh = {}
+    censored_segment_indices = {}
+    thresh_data = {}
 
     # Assuming 'original_data' is a dictionary with patient data, and each entry is a 1D array of continuous data points
     for patient_id, segments in original_segments.items():
         # Store interpolated segments for the current patient
         censored_segments[patient_id] = []
+        censored_thresh[patient_id] = []
+        censored_segment_indices[patient_id] = []
+        thresh_data[patient_id] = []
 
         for segment in segments:
-            # Extract the segment data between the start and end indices
-            has_nan = np.isnan(segment).any()
-            # print("Contains NaN values:", has_nan)
-            censored_segment = np.where(
-                segment > thresh_data[patient_id], np.nan, segment
-            )
+            if len(segment) != 288:
+                print("segment len = ", len(segment))
+            thresh = np.quantile(segment[~np.isnan(segment)], args.percentile)
+            if thresh == np.max(segment[~np.isnan(segment)]):
+                print("maximum thresh")
+                filtered_segment = segment[~np.isnan(segment)]  # Remove NaN values
+                filtered_segment = filtered_segment[
+                    filtered_segment < np.max(filtered_segment)
+                ]  # Exclude the max value
+                # Compute the quantile on the filtered dataset
+                thresh = np.quantile(filtered_segment, args.percentile)
+                print("new thresh = ", thresh)
+            # pint("thresh = ", thresh)
+            censored_thresh[patient_id].append(thresh)
+            censored_segment = np.where(segment > thresh, np.nan, segment)
+            censored_segment_index = np.where(segment > thresh)
+
             censored_segments[patient_id].append(censored_segment)
-    # 3. clean segments
+            censored_segment_indices[patient_id].append(censored_segment_index)
+            thresh_data[patient_id].append(thresh)
 
-    # Assuming sensored_segments and original_segments are dictionaries containing segments
-    # Initialize cleaned versions of both dictionaries
-    cleaned_censored_segments = {}
-    cleaned_original_segments = {}
-
-    # Iterate through each patient in sensored_segments and original_segments
-    for patient_id in censored_segments.keys():
-        # Initialize lists to store cleaned segments
-        cleaned_censored_segments[patient_id] = []
-        cleaned_original_segments[patient_id] = []
-
-        # Process each segment in sensored_segments and original_segments
-        for censored_segment, original_segment in zip(
-            censored_segments[patient_id], original_segments[patient_id]
-        ):
-            cleaned_censored_segment, cleaned_original_segment = (
-                clean_segment_and_align(censored_segment, original_segment)
-            )
-
-            # Append the cleaned segments
-            if (
-                cleaned_censored_segment.shape[0] != 0
-                and cleaned_original_segment.shape[0] != 0
-            ):
-                cleaned_censored_segments[patient_id].append(cleaned_censored_segment)
-            if (
-                cleaned_original_segment.shape[0] != 0
-                and cleaned_censored_segment.shape[0] != 0
-            ):
-                cleaned_original_segments[patient_id].append(cleaned_original_segment)
+    # print("All censored segments:", censored_segments)
 
     # Now the cleaned_sensored_segments and cleaned_original_segments dictionaries
     # contain segments without leading or trailing NaN values, and they are aligned.
@@ -255,88 +275,70 @@ if __name__ == "__main__":
     # print("Cleaned Original Segments:", cleaned_original_segments)
     if args.method == "polynomial":
         interpolated_segments_poly = naive_baseline_imputation(
-            data=cleaned_censored_segments, method="polynomial", order=2
+            data=censored_segments, method="polynomial", order=2
         )
         visualize_original_interpolated(
             interpolated_segments_poly,
-            cleaned_censored_segments,
-            cleaned_original_segments,
+            censored_segments,
+            original_segments,
             thresh_data,
             method_name="Polynomian",
         )
         df_poly = compare_statistics(
-            cleaned_original_segments,
-            cleaned_censored_segments,
+            original_segments,
+            censored_segments,
             interpolated_segments_poly,
         )
-        if args.dataset == "ohio":
-            numeric_cols = df_poly.select_dtypes(include="number")
-            df_poly[numeric_cols.columns] = (
-                df_poly.select_dtypes(include="number") * 0.0555
-            )
         print(df_poly)
     elif args.method == "cubic":
         interpolated_segments_cubic = naive_baseline_imputation(
-            data=cleaned_censored_segments, method="cubic"
+            data=censored_segments, method="cubic"
         )
         visualize_original_interpolated(
             interpolated_segments_cubic,
-            cleaned_censored_segments,
-            cleaned_original_segments,
+            censored_segments,
+            original_segments,
             thresh_data,
             method_name="Cubic",
         )
         df_cubic = compare_statistics(
-            cleaned_original_segments,
-            cleaned_censored_segments,
+            original_segments,
+            censored_segments,
             interpolated_segments_cubic,
         )
-        if args.dataset == "ohio":
-            numeric_cols = df_cubic.select_dtypes(include="number")
-            df_cubic[numeric_cols.columns] = (
-                df_cubic.select_dtypes(include="number") * 0.0555
-            )
         print(df_cubic)
     elif args.method == "ffill":
         interpolated_segments_ffill = naive_baseline_imputation(
-            data=cleaned_censored_segments, method="ffill"
+            data=censored_segments, method="ffill"
         )
         visualize_original_interpolated(
             interpolated_segments_ffill,
-            cleaned_censored_segments,
-            cleaned_original_segments,
+            censored_segments,
+            original_segments,
             thresh_data,
             method_name="Ffill",
         )
         df_ffill = compare_statistics(
-            cleaned_original_segments,
-            cleaned_censored_segments,
+            original_segments,
+            censored_segments,
             interpolated_segments_ffill,
         )
-        if args.dataset == "ohio":
-            numeric_cols = df_ffill.select_dtypes(include="number")
-            df_ffill[numeric_cols.columns] = (
-                df_ffill.select_dtypes(include="number") * 0.0555
-            )
         print(df_ffill)
     elif args.method == "gp":
         interpolated_segments_gp = {}
-        for patient_id, segments in cleaned_censored_segments.items():
+        for patient_id, segments in censored_segments.items():
             interpolated_segments_gp[patient_id] = []
-            all_segments = np.concatenate(segments)
-            ind_all = np.where(~np.isnan(all_segments))[0]
-            all_segments_actual = all_segments[ind_all]
-            var = np.std(all_segments_actual) ** 2
-            mean = np.mean(all_segments_actual)
-            for segment in segments:
+            for i in range(len(segments)):
                 # Convert segment to DataFrame to use interpolation functions
-                segment_df = pd.DataFrame(segment, columns=["cbg"])
+                segment_df = pd.DataFrame(segments[i], columns=["cbg"])
                 # Check if there are any NaN values in the segment
                 if segment_df["cbg"].isna().any():
+                    ind_all = np.where(~np.isnan(np.array(segment_df)))[0]
+                    var = np.std(np.array(segment_df)[ind_all]) ** 2
                     # Only train and infer if there are NaN values
-                    gpr = train_gpr(np.array(segment_df), kernel=args.kernel, var=var)
+                    gpr = train_gpr(np.array(segment_df), var=var, kernel=args.kernel)
                     indices, interpolated_segment, std = inference_gpr(
-                        np.array(segment_df), gpr
+                        censored_segment_indices[patient_id][i][0], gpr
                     )
 
                     # Create a copy of the original segment and replace NaNs with interpolated values
@@ -360,20 +362,16 @@ if __name__ == "__main__":
                         np.array(segment_df).flatten()
                     )
 
-        # break
         visualize_original_interpolated(
             interpolated_segments_gp,
-            cleaned_censored_segments,
-            cleaned_original_segments,
+            censored_segments,
+            original_segments,
             thresh_data,
             method_name="Gaussian Process",
         )
         df_gp = compare_statistics(
-            cleaned_original_segments,
-            cleaned_censored_segments,
+            original_segments,
+            censored_segments,
             interpolated_segments_gp,
         )
-        if args.dataset == "ohio":
-            numeric_cols = df_gp.select_dtypes(include="number")
-            df_gp[numeric_cols.columns] = df_gp.select_dtypes(include="number") * 0.0555
         print(df_gp)

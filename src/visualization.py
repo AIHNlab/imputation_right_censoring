@@ -80,14 +80,24 @@ def visualize_original_interpolated(
         if i * 2 + 1 >= len(axes):
             break
 
-        original_segment = np.concatenate(cleaned_censored_segments[patient_id])
-        interpolated_segment = np.concatenate(interpolated_segments[patient_id])
-        original_patient_data = np.concatenate(cleaned_original_segments[patient_id])
-        # original_segment = cleaned_censored_segments[patient_id][0]
-        # interpolated_segment = interpolated_segments[patient_id][0]
-        # original_patient_data = cleaned_original_segments[patient_id][0]
-        y_min = min(interpolated_segment.min(), original_patient_data.min())
-        y_max = max(interpolated_segment.max(), original_patient_data.max())
+        if len(cleaned_original_segments[patient_id]) > 1:
+            original_segment = np.concatenate(cleaned_censored_segments[patient_id])
+            interpolated_segment = np.concatenate(interpolated_segments[patient_id])
+            original_patient_data = np.concatenate(
+                cleaned_original_segments[patient_id]
+            )
+        else:
+            original_segment = cleaned_censored_segments[patient_id][0]
+            interpolated_segment = interpolated_segments[patient_id][0]
+            original_patient_data = cleaned_original_segments[patient_id][0]
+
+        patient_thresh_data = thresh_data[patient_id]
+        repeated_thresh = np.repeat(patient_thresh_data, 288)
+        # original_censored_segment = original_censored_segment[patient_id][0]
+        # interpolated_segment = interpolated_segment[patient_id][0]
+        # original_patient_data = original_patient_data[patient_id][0]
+        y_min = min(np.nanmin(interpolated_segment), np.nanmin(original_patient_data))
+        y_max = max(np.nanmax(interpolated_segment), np.nanmax(original_patient_data))
 
         axes[2 * i + 1].plot(
             interpolated_segment, color="orange", label="Interpolated Data", alpha=0.8
@@ -101,10 +111,9 @@ def visualize_original_interpolated(
         axes[2 * i + 1].set_ylabel("CBG (mg/dL)")
         axes[2 * i + 1].grid(True)
 
-        # thresh = test_data_dict[patient_id]['cbg'].quantile(0.8)
         axes[2 * i].plot(original_patient_data, color="purple")
-        axes[2 * i].axhline(
-            y=thresh_data[patient_id],
+        axes[2 * i].plot(
+            repeated_thresh,
             color="orange",
             linestyle="--",
             label="80th Percentile Threshold",

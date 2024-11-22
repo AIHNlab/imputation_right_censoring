@@ -153,7 +153,7 @@ def train_gpr(timeseries: np.ndarray, kernel="matern32", var=1) -> GPRegression:
 
 
 def inference_gpr(
-    timeseries: np.ndarray, input_model: str | GPRegression
+    predict_X: np.ndarray, input_model: str | GPRegression
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     # Load the model from file
     if isinstance(input_model, str):
@@ -166,7 +166,7 @@ def inference_gpr(
         return
 
     # Prediciotn
-    predict_X = np.where(np.isnan(timeseries))[0]
+    # predict_X = np.where(np.isnan(timeseries))[0]
     if predict_X.size == 0:
         raise ValueError("No missing values found in the timeseries for inference.")
     predict_X = predict_X.reshape((-1, 1))
