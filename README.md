@@ -1,5 +1,3 @@
-Here's a concise version of the **README.md**:
-
 ---
 
 # Imputation Model for Glucose Values Out of Measuring Range for CGMs
