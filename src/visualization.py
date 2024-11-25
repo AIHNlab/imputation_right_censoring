@@ -108,7 +108,7 @@ def visualize_original_interpolated(
             f"Patient {patient_id} | {method_name} Interpolation on Test Data"
         )
         axes[2 * i + 1].set_xlabel("Time (minutes)")
-        axes[2 * i + 1].set_ylabel("CBG (mg/dL)")
+        axes[2 * i + 1].set_ylabel("CGM (mmol/dL)")
         axes[2 * i + 1].grid(True)
 
         axes[2 * i].plot(original_patient_data, color="purple")
@@ -122,8 +122,8 @@ def visualize_original_interpolated(
         axes[2 * i].set_title(
             f"Patient {patient_id} | Quantile-Cut Data (80th Percentile)"
         )
-        axes[2 * i].set_xlabel("Days Elapsed")
-        axes[2 * i].set_ylabel("CBG (mg/dL)")
+        axes[2 * i].set_xlabel("Time (minutes")
+        axes[2 * i].set_ylabel("CGM (mmol/dL)")
 
     plt.tight_layout()
     plt.savefig("figures/" + method_name + ".png")
