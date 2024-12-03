@@ -1,19 +1,21 @@
 import argparse
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import os
 
 
 from src.data_processing import (
+    get_daily_segments_loc,
+    check_and_filter_nan_segments,
+)
+from src.data_loaders import (
     load_data_iso,
     load_data_cap,
     load_data_cap1,
     load_data_ohio,
-    get_daily_segments_loc,
-    check_and_filter_nan_segments,
+    load_data_glucobench,
 )
 from src.visualization import (
-    plot_patient_data_with_quantile,
     visualize_original_interpolated,
 )
 from models.baselines import naive_baseline_imputation
@@ -134,12 +136,12 @@ if __name__ == "__main__":
             all_data = load_data_iso(patient_id)
             all_data_dict[patient_id] = all_data
 
-        patient_ids_cap = ["0620"]
+        patient_ids_cap = ["620"]
         patient_ids_cap1 = [
             "627",
-            "0639",
-            "0652",
-            "0675",
+            "639",
+            "652",
+            "675",
             "CGM_007",
             "CGM_008",
             "CGM_009",
@@ -164,6 +166,101 @@ if __name__ == "__main__":
             all_data_dict[patient_id] = all_data
 
         patient_ids = patient_ids + patient_ids_cap + patient_ids_cap1
+
+    elif (
+        args.dataset == "iglu"
+        or args.dataset == "dubosson"
+        or args.dataset == "weinstock"
+        or args.dataset == "colas"
+        or args.dataset == "hall"
+        or args.dataset == "T1DEXI_adults"
+    ):
+        all_data_dict, patient_ids = load_data_glucobench(args.dataset)
+    elif args.dataset == "t1d":
+        patient_id_ohio = [
+            "540",
+            "544",
+            "552",
+            "559",
+            "563",
+            "567",
+            "570",
+            "575",
+            "584",
+            "588",
+            "591",
+            "596",
+        ]
+        train_data_dict = {}
+        test_data_dict = {}
+        all_data_dict = {}
+        # Update patient ids to be unique for Ohio dataset
+        for patient_id in patient_id_ohio:
+            unique_patient_id = f"ohio_{patient_id}"  # Add a prefix to make it unique
+            _, train_data, test_data, all_data = load_data_ohio(
+                patient_id, include_test=True
+            )
+
+            train_data_dict[unique_patient_id] = train_data
+            test_data_dict[unique_patient_id] = test_data
+            all_data_dict[unique_patient_id] = all_data
+
+        # Update patient ids to be unique for Dubosson dataset
+        all_data_dubosson, patient_id_dubosson = load_data_glucobench("dubosson")
+        for patient_id in patient_id_dubosson:
+            unique_patient_id = f"dubosson_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_dubosson[patient_id]
+
+        # Update patient ids to be unique for Weinstock dataset
+        all_data_weinstock, patient_id_weinstock = load_data_glucobench("weinstock")
+        for patient_id in patient_id_weinstock:
+            unique_patient_id = f"weinstock_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_weinstock[patient_id]
+
+        # Update patient ids to be unique for T1DEXI_adults dataset
+        all_data_t1dexi, patient_id_t1dexi = load_data_glucobench("T1DEXI_adults")
+        for patient_id in patient_id_t1dexi:
+            unique_patient_id = (
+                f"T1DEXI_adults_{patient_id}"  # Add a prefix for uniqueness
+            )
+            all_data_dict[unique_patient_id] = all_data_t1dexi[patient_id]
+
+        # Create a list of all unique patient IDs from all datasets
+        patient_ids = (
+            [f"ohio_{id}" for id in patient_id_ohio]
+            + [f"weinstock_{id}" for id in patient_id_weinstock]
+            + [f"dubosson_{id}" for id in patient_id_dubosson]
+            + [f"T1DEXI_adults_{id}" for id in patient_id_t1dexi]
+        )
+    elif args.dataset == "t2d":
+        all_data_dict = {}
+        all_data_colas, patient_id_colas = load_data_glucobench("colas")
+        print(patient_id_colas)
+        for patient_id in patient_id_colas:
+            unique_patient_id = f"colas_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_colas[patient_id]
+
+        all_data_iglu, patient_id_iglu = load_data_glucobench("iglu")
+        print(patient_id_iglu)
+        for patient_id in patient_id_iglu:
+            unique_patient_id = f"iglu_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_iglu[patient_id]
+
+        all_data_hall, patient_id_hall = load_data_glucobench("hall")
+        print(patient_id_hall)
+        for patient_id in patient_id_hall:
+            unique_patient_id = f"hall_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_hall[patient_id]
+
+        # Create a list of all unique patient IDs from all datasets
+        patient_ids = (
+            [f"colas_{id}" for id in patient_id_colas]
+            + [f"iglu_{id}" for id in patient_id_iglu]
+            + [f"hall_{id}" for id in patient_id_hall]
+        )
+
+    # print("patient ids = ", patient_ids)
+    # print("all data = ", all_data_dict)
 
     print("all data = ", len(all_data_dict))
     # 1. create continues
@@ -216,6 +313,7 @@ if __name__ == "__main__":
             num_nan_values = np.sum(np.isnan(segment_data))
 
             if segment_length == 288:
+                # print(f"The segment has {num_nan_values} NaN values.")
                 # Append the segment to the patient's list of segments
                 patient_segments.append(np.array(segment_data))
 
@@ -223,10 +321,10 @@ if __name__ == "__main__":
                 patient_segment_stats.append(
                     {"segment_length": segment_length, "num_nan_values": num_nan_values}
                 )
-
-        # Store the segmented data in the dictionary, using the patient_id as the key
-        segmented_data_dict[patient_id] = patient_segments
-        segment_stats_dict[patient_id] = patient_segment_stats
+        if len(patient_segments) != 0:
+            # Store the segmented data in the dictionary, using the patient_id as the key
+            segmented_data_dict[patient_id] = patient_segments
+            segment_stats_dict[patient_id] = patient_segment_stats
 
     original_segments = segmented_data_dict
 
@@ -278,6 +376,7 @@ if __name__ == "__main__":
             data=censored_segments, method="polynomial", order=2
         )
         visualize_original_interpolated(
+            args,
             interpolated_segments_poly,
             censored_segments,
             original_segments,
@@ -295,6 +394,7 @@ if __name__ == "__main__":
             data=censored_segments, method="cubic"
         )
         visualize_original_interpolated(
+            args,
             interpolated_segments_cubic,
             censored_segments,
             original_segments,
@@ -312,6 +412,7 @@ if __name__ == "__main__":
             data=censored_segments, method="ffill"
         )
         visualize_original_interpolated(
+            args,
             interpolated_segments_ffill,
             censored_segments,
             original_segments,
@@ -363,6 +464,7 @@ if __name__ == "__main__":
                     )
 
         visualize_original_interpolated(
+            args,
             interpolated_segments_gp,
             censored_segments,
             original_segments,
@@ -375,3 +477,12 @@ if __name__ == "__main__":
             interpolated_segments_gp,
         )
         print(df_gp)
+        os.makedirs(
+            f"results/{args.dataset}",
+            exist_ok=True,
+        )
+        # Construct the file name
+        file_name = f"results/{args.dataset}/{args.method}_{args.dataset}_{args.kernel}_{args.percentile}.csv"
+
+        # Save the DataFrame to a CSV file
+        df_gp.to_csv(file_name, index=False)

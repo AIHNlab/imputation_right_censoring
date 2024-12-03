@@ -4,18 +4,9 @@ import joblib
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
-    ConstantKernel,
-    RBF,
-    WhiteKernel,
-    ExpSineSquared,
     Matern,
-    DotProduct,
 )
 from scipy.optimize import minimize
-from sklearn.utils.optimize import _check_optimize_result
-
-from sklearn.gaussian_process.kernels import PairwiseKernel
-from sklearn.metrics.pairwise import polynomial_kernel
 
 import GPy
 from GPy.models import GPRegression
@@ -53,10 +44,8 @@ def train_gpr_sklearn(
     if kernel is None:
         maternParams = {
             "length_scale": 10,
-            # "length_scale_bounds": (1e-15, 1e15),
             "nu": 1.5,
         }
-        # kernel = ConstantKernel(10.0, (1e-4, 1e1)) * Matern(**maternParams)
         kernel = var * Matern(**maternParams)
 
     # Ensure timeseries is a 1D array
@@ -67,7 +56,6 @@ def train_gpr_sklearn(
             "Expected timeseries to be a 1D array or a 2D array with shape (n_samples, 1)."
         )
 
-    # The training data is composed of the indices of valid values and the values themselves. (More features would be easily implemented -> computation time?)
     train_X = np.where(~np.isnan(timeseries))[0]  # Indices where values are not NaN
     train_y = timeseries[train_X]  # Actual values at those indices
     train_X = train_X.reshape((-1, 1))
@@ -109,7 +97,7 @@ def inference_gpr_sklearn(
         print("Invalid model passed to infer. Returning.")
         return
 
-    # Prediciotn
+    # Prediction
     predict_X = np.where(np.isnan(timeseries))[0]
     predict_X = predict_X.reshape((-1, 1))
     predict_y, std_y = gpr.predict(predict_X, return_std=True)
@@ -118,8 +106,6 @@ def inference_gpr_sklearn(
 
 
 def train_gpr(timeseries: np.ndarray, kernel="matern32", var=1) -> GPRegression:
-
-    # If no kernel is provided this is a default one. (We must test out, see: https://scikit-learn.org/1.5/modules/gaussian_process.html)
     if kernel == "matern32":
         kernel = GPy.kern.sde_Matern32(input_dim=1, variance=var, lengthscale=1.0)
     elif kernel == "matern52":
@@ -135,19 +121,18 @@ def train_gpr(timeseries: np.ndarray, kernel="matern32", var=1) -> GPRegression:
             "Expected timeseries to be a 1D array or a 2D array with shape (n_samples, 1)."
         )
 
-    # The training data is composed of the indices of valid values and the values themselves. (More features would be easily implemented -> computation time?)
     train_X = np.where(~np.isnan(timeseries))[0]  # Indices where values are not NaN
     train_y = timeseries[train_X]  # Actual values at those indices
-    train_X = train_X.reshape((-1, 1))
-    train_y = train_y.reshape(-1, 1)
+    train_X = train_X.reshape((-1, 1)).astype(np.float64)
+    train_y = train_y.reshape(-1, 1).astype(np.float64)
 
     # Create a GPR newly. alpha is the noise level. Normalize true.
     gpr = GPy.models.GPRegression(
-        train_X, train_y, kernel, normalizer=False, noise_var=1e-4
+        train_X, train_y, kernel, normalizer=False, noise_var=1e-5
     )
 
     # Optimize the model hyperparameters
-    gpr.optimize(max_iters=100)  # Adjust iterations as needed
+    gpr.optimize(max_iters=50)
 
     return gpr
 
@@ -166,7 +151,6 @@ def inference_gpr(
         return
 
     # Prediciotn
-    # predict_X = np.where(np.isnan(timeseries))[0]
     if predict_X.size == 0:
         raise ValueError("No missing values found in the timeseries for inference.")
     predict_X = predict_X.reshape((-1, 1))
