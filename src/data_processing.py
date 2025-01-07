@@ -25,7 +25,7 @@ def fill_intervals_with_nan(
     new_rows = []
     for i in range(1, len(df)):
         gap = df.loc[i, "time_diff"]
-        if gap > 15:
+        if gap > 5:
             # Find the start and end times of the gap
             start_time = df.loc[i - 1, time_col]
             end_time = df.loc[i, time_col]
