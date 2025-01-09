@@ -3,9 +3,7 @@ import pandas as pd
 import joblib
 
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import (
-    Matern,
-)
+from sklearn.gaussian_process.kernels import Matern, DotProduct
 from scipy.optimize import minimize
 
 import GPy
@@ -46,7 +44,9 @@ def train_gpr_sklearn(
             "length_scale": 10,
             "nu": 1.5,
         }
-        kernel = var * Matern(**maternParams)
+    kernel = DotProduct(sigma_0=1) * Matern(length_scale=0.1, nu=0.5) + Matern(
+        length_scale=0.5, nu=0.5
+    )
 
     # Ensure timeseries is a 1D array
     if timeseries.ndim == 2 and timeseries.shape[1] == 1:
@@ -77,12 +77,12 @@ def train_gpr_sklearn(
 
 
 def inference_gpr_sklearn(
-    timeseries: np.ndarray, input_model: str | GaussianProcessRegressor
+    predict_X: np.ndarray, input_model: str | GaussianProcessRegressor
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     This function loads the defined model and uses it to impute the values at the given indices.
 
-    @param timeseries:np.ndarray The CBG data for one patient. Example: train_data_dict['540']['cbg']
+    @param predict_X:np.ndarray The CBG data for one patient. Example: train_data_dict['540']['cbg']
     @param input_model:str Pass here the trained model or from where to load the model params. Example pass a string to load params: 'gpr_model_540'
 
     @ return missing value indices, predicted y values, standard deviation.
@@ -98,7 +98,7 @@ def inference_gpr_sklearn(
         return
 
     # Prediction
-    predict_X = np.where(np.isnan(timeseries))[0]
+    # predict_X = np.where(np.isnan(timeseries))[0]
     predict_X = predict_X.reshape((-1, 1))
     predict_y, std_y = gpr.predict(predict_X, return_std=True)
 
