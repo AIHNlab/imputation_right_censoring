@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define datasets
-datasets=("colas" "hall" "t1d" "T1DEXI_adults")
+datasets=("colas" "hall" "dubosson" "iglu" "iso" "ohio" "t1d" "T1DEXI_adults" "t2d" "weinstock")
 
 # Define kernels
 kernels=("matern32" "matern52" "squared_exponential")

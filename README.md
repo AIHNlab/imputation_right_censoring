@@ -4,8 +4,10 @@
 
 This repository provides a Bayesian non-parametric latent Gaussian process regression model for imputation of right-censored CGM data, using the **GPy** library.
 
+![](images/example.png)
+
 ## Features
-- **Gaussian Process Regression (GPR)** for imputation.
+- **Gaussian Process Regression (GPR)** for imputation of right-censored CGM data.
 - Calculate the bias and the mean squared error (MSE) of standard CGM metrics, i.e., mean glucose level, standard deviation (SD) and coefficient of variation (CV). 
 
 ## Installation
@@ -16,12 +18,16 @@ pip install -r requirements.txt
 ```
 
 ## Datasets
-- Ohio Dataset
-- In-patient datasets (ISO and CAP)
+![alt text](images/datasets.png)
 
-## Running the Model
+## Running the Model for specific dataset, kernel, and percentile
 ```bash
 python main.py --dataset ohio --method gp --percentile 0.8 --kernel matern32
+```
+
+## Reproducing the results
+```bash
+./run.sh
 ```
 
 ## Dependencies
