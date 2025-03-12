@@ -51,7 +51,9 @@ def visualize_original_interpolated(
         )
         axes[1].set_xlabel("Time (minutes)")
         axes[1].set_ylabel("CGM (mmol/L)")
-        axes[1].grid(True)
+        axes[1].grid(
+            True, which="both", linestyle="--", linewidth=0.5
+        )  # Specify grid line style and width
 
         axes[0].plot(original_patient_data, color="purple")
         axes[0].plot(
@@ -66,6 +68,9 @@ def visualize_original_interpolated(
         )
         axes[0].set_xlabel("Time (minutes)")
         axes[0].set_ylabel("CGM (mmol/L)")
+        axes[0].grid(
+            True, which="both", linestyle="--", linewidth=0.5
+        )  # Specify grid line style and width
 
         plt.tight_layout()
         os.makedirs(
