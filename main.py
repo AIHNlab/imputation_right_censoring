@@ -10,8 +10,6 @@ from src.data_processing import (
 )
 from src.data_loaders import (
     load_data_iso,
-    load_data_cap,
-    load_data_cap1,
     load_data_ohio,
     load_data_glucobench,
 )
@@ -20,7 +18,7 @@ from src.visualization import (
 )
 from models.baselines import naive_baseline_imputation
 from models.gp import train_gpr, inference_gpr
-from src.bg_statistics import compare_statistics
+from src.bg_statistics import compare_statistics, compute_errors, compute_errors_flatten
 
 if __name__ == "__main__":
     # Argument parser for command-line options
@@ -78,16 +76,14 @@ if __name__ == "__main__":
             "591",
             "596",
         ]
-        train_data_dict = {}
-        test_data_dict = {}
-        all_data_dict = {}
-        for patient_id in patient_ids:
-            _, train_data, test_data, all_data = load_data_ohio(
-                patient_id, include_test=True
-            )
-            train_data_dict[patient_id] = train_data
-            test_data_dict[patient_id] = test_data
-            all_data_dict[patient_id] = all_data
+        (
+            _,
+            train_data_dict,
+            test_data_dict,
+            all_data_dict,
+            percentage_df,
+            percentage_per_patient,
+        ) = load_data_ohio(patient_ids, include_test=True)
     elif args.dataset == "iso":
         patient_ids = [str(i) for i in range(102, 224)]
         to_remove = [
@@ -130,42 +126,9 @@ if __name__ == "__main__":
             "220",
         ]
         patient_ids = list(set(patient_ids) - set(to_remove))
-        all_data_dict = {}
-
-        for patient_id in patient_ids:
-            all_data = load_data_iso(patient_id)
-            all_data_dict[patient_id] = all_data
-
-        patient_ids_cap = ["620"]
-        patient_ids_cap1 = [
-            "627",
-            "639",
-            "652",
-            "675",
-            "CGM_007",
-            "CGM_008",
-            "CGM_009",
-            "CGM_011",
-            "CGM_013",
-            "CGM_014",
-            "CGM_017",
-            "CGM_018",
-            "CGM_020",
-            "CGM_021",
-            "CGM_022",
-            "CGM_023",
-            "CGM_024",
-            "CGM_025",
-        ]
-        for patient_id in patient_ids_cap:
-            all_data = load_data_cap(patient_id)
-            all_data_dict[patient_id] = all_data
-
-        for patient_id in patient_ids_cap1:
-            all_data = load_data_cap1(patient_id)
-            all_data_dict[patient_id] = all_data
-
-        patient_ids = patient_ids + patient_ids_cap + patient_ids_cap1
+        all_data_dict, percentage_df, percentage_per_patient = load_data_iso(
+            patient_ids
+        )
 
     elif (
         args.dataset == "iglu"
@@ -175,7 +138,9 @@ if __name__ == "__main__":
         or args.dataset == "hall"
         or args.dataset == "T1DEXI_adults"
     ):
-        all_data_dict, patient_ids = load_data_glucobench(args.dataset)
+        all_data_dict, patient_ids, percentage_df, percentage_per_patient = (
+            load_data_glucobench(args.dataset)
+        )
     elif args.dataset == "t1d":
         patient_id_ohio = [
             "540",
@@ -191,38 +156,51 @@ if __name__ == "__main__":
             "591",
             "596",
         ]
-        train_data_dict = {}
-        test_data_dict = {}
-        all_data_dict = {}
-        # Update patient ids to be unique for Ohio dataset
-        for patient_id in patient_id_ohio:
-            unique_patient_id = f"ohio_{patient_id}"  # Add a prefix to make it unique
-            _, train_data, test_data, all_data = load_data_ohio(
-                patient_id, include_test=True
-            )
 
-            train_data_dict[unique_patient_id] = train_data
-            test_data_dict[unique_patient_id] = test_data
-            all_data_dict[unique_patient_id] = all_data
+        all_data_dict = {}
+        (
+            _,
+            train_data_dict,
+            test_data_dict,
+            all_data_ohio,
+            percentage_df_ohio,
+            percentage_per_patient_ohio,
+        ) = load_data_ohio(patient_id_ohio, include_test=True)
+        for patient_id in patient_id_ohio:
+            unique_patient_id = f"ohio_{patient_id}"  # Add a prefix for uniqueness
+            all_data_dict[unique_patient_id] = all_data_ohio[patient_id]
 
         # Update patient ids to be unique for Dubosson dataset
-        all_data_dubosson, patient_id_dubosson = load_data_glucobench("dubosson")
+        (
+            all_data_dubosson,
+            patient_id_dubosson,
+            percentage_df_dubosson,
+            percentage_per_patient_dubosson,
+        ) = load_data_glucobench("dubosson")
         for patient_id in patient_id_dubosson:
             unique_patient_id = f"dubosson_{patient_id}"  # Add a prefix for uniqueness
             all_data_dict[unique_patient_id] = all_data_dubosson[patient_id]
 
         # Update patient ids to be unique for Weinstock dataset
-        all_data_weinstock, patient_id_weinstock = load_data_glucobench("weinstock")
+        (
+            all_data_weinstock,
+            patient_id_weinstock,
+            percentage_df_weinstock,
+            percentage_per_patient_weinstock,
+        ) = load_data_glucobench("weinstock")
         for patient_id in patient_id_weinstock:
             unique_patient_id = f"weinstock_{patient_id}"  # Add a prefix for uniqueness
             all_data_dict[unique_patient_id] = all_data_weinstock[patient_id]
 
         # Update patient ids to be unique for T1DEXI_adults dataset
-        all_data_t1dexi, patient_id_t1dexi = load_data_glucobench("T1DEXI_adults")
+        (
+            all_data_t1dexi,
+            patient_id_t1dexi,
+            percentage_df_t1dexi,
+            percentage_per_patient_t1dexi,
+        ) = load_data_glucobench("T1DEXI_adults")
         for patient_id in patient_id_t1dexi:
-            unique_patient_id = (
-                f"T1DEXI_adults_{patient_id}"  # Add a prefix for uniqueness
-            )
+            unique_patient_id = f"T1DEXI_adults_{patient_id}"
             all_data_dict[unique_patient_id] = all_data_t1dexi[patient_id]
 
         # Create a list of all unique patient IDs from all datasets
@@ -232,24 +210,64 @@ if __name__ == "__main__":
             + [f"dubosson_{id}" for id in patient_id_dubosson]
             + [f"T1DEXI_adults_{id}" for id in patient_id_t1dexi]
         )
+
+        percentage_per_patient = sum(
+            [
+                percentage_per_patient_ohio,
+                percentage_per_patient_weinstock,
+                percentage_per_patient_dubosson,
+                percentage_per_patient_t1dexi,
+            ],
+            [],
+        )
+        percentages = np.array([x[0] for x in percentage_per_patient])
+        average_percentage = np.mean(percentages)
+        std_dev = np.std(percentages)
+
+        percentage_df = pd.DataFrame(
+            {
+                "Mean_Percentage_Above_Threshold": [average_percentage],
+                "Standard_Deviation": [std_dev],
+            }
+        )
+        percentage_df.to_csv(
+            f"results/{args.dataset}/percentage_above_threshold/percentage_above_threshold_{args.dataset}.csv",
+            index=False,
+        )
+
     elif args.dataset == "t2d":
         all_data_dict = {}
-        all_data_colas, patient_id_colas = load_data_glucobench("colas")
-        print(patient_id_colas)
+        (
+            all_data_colas,
+            patient_id_colas,
+            percentage_df_colas,
+            percentage_per_patient_colas,
+        ) = load_data_glucobench("colas")
+
         for patient_id in patient_id_colas:
             unique_patient_id = f"colas_{patient_id}"  # Add a prefix for uniqueness
             all_data_dict[unique_patient_id] = all_data_colas[patient_id]
 
-        all_data_iglu, patient_id_iglu = load_data_glucobench("iglu")
-        print(patient_id_iglu)
+        (
+            all_data_iglu,
+            patient_id_iglu,
+            percentage_df_iglu,
+            percentage_per_patient_iglu,
+        ) = load_data_glucobench("iglu")
+
         for patient_id in patient_id_iglu:
-            unique_patient_id = f"iglu_{patient_id}"  # Add a prefix for uniqueness
+            unique_patient_id = f"iglu_{patient_id}"
             all_data_dict[unique_patient_id] = all_data_iglu[patient_id]
 
-        all_data_hall, patient_id_hall = load_data_glucobench("hall")
-        print(patient_id_hall)
+        (
+            all_data_hall,
+            patient_id_hall,
+            percentage_df_hall,
+            percentage_per_patient_hall,
+        ) = load_data_glucobench("hall")
+
         for patient_id in patient_id_hall:
-            unique_patient_id = f"hall_{patient_id}"  # Add a prefix for uniqueness
+            unique_patient_id = f"hall_{patient_id}"
             all_data_dict[unique_patient_id] = all_data_hall[patient_id]
 
         # Create a list of all unique patient IDs from all datasets
@@ -258,11 +276,29 @@ if __name__ == "__main__":
             + [f"iglu_{id}" for id in patient_id_iglu]
             + [f"hall_{id}" for id in patient_id_hall]
         )
+        percentage_per_patient = sum(
+            [
+                percentage_per_patient_colas,
+                percentage_per_patient_iglu,
+                percentage_per_patient_hall,
+            ],
+            [],
+        )
+        percentages = np.array([x[0] for x in percentage_per_patient])
+        average_percentage = np.mean(percentages)
+        std_dev = np.std(percentages)
 
-    # print("patient ids = ", patient_ids)
-    # print("all data = ", all_data_dict)
+        percentage_df = pd.DataFrame(
+            {
+                "Mean_Percentage_Above_Threshold": [average_percentage],
+                "Standard_Deviation": [std_dev],
+            }
+        )
+        percentage_df.to_csv(
+            f"results/{args.dataset}/percentage_above_threshold/percentage_above_threshold_{args.dataset}.csv",
+            index=False,
+        )
 
-    print("all data = ", len(all_data_dict))
     # 1. create continues
     cont_segments_dict = {}
     filtered_segments_dict = {}
@@ -313,7 +349,6 @@ if __name__ == "__main__":
             num_nan_values = np.sum(np.isnan(segment_data))
 
             if segment_length == 288:
-                # print(f"The segment has {num_nan_values} NaN values.")
                 # Append the segment to the patient's list of segments
                 patient_segments.append(np.array(segment_data))
 
@@ -365,12 +400,8 @@ if __name__ == "__main__":
             censored_segment_indices[patient_id].append(censored_segment_index)
             thresh_data[patient_id].append(thresh)
 
-    # print("All censored segments:", censored_segments)
-
     # Now the cleaned_sensored_segments and cleaned_original_segments dictionaries
     # contain segments without leading or trailing NaN values, and they are aligned.
-    # print("Cleaned Sensored Segments:", cleaned_sensored_segments)
-    # print("Cleaned Original Segments:", cleaned_original_segments)
     if args.method == "polynomial":
         interpolated_segments_poly = naive_baseline_imputation(
             data=censored_segments, method="polynomial", order=2
@@ -486,3 +517,39 @@ if __name__ == "__main__":
 
         # Save the DataFrame to a CSV file
         df_gp.to_csv(file_name, index=False)
+
+        _ = compute_errors_flatten(
+            args,
+            original_segments,
+            censored_segments,
+            interpolated_segments_gp,
+        )
+        imputation_errors = compute_errors(
+            original_segments,
+            censored_segments,
+            interpolated_segments_gp,
+        )
+
+        print(
+            imputation_errors[
+                [
+                    "MSE_GP_Median",
+                    "MSE_GP_Q25",
+                    "MSE_GP_Q75",
+                    "R2_GP_Median",
+                    "R2_GP_Q25",
+                    "R2_GP_Q75",
+                    "MSE_BAS_Median",
+                    "MSE_BAS_Q25",
+                    "MSE_BAS_Q75",
+                    "R2_BAS_Median",
+                    "R2_BAS_Q25",
+                    "R2_BAS_Q75",
+                ]
+            ]
+        )
+        # Construct the file name
+        file_name = f"results/{args.dataset}/imputationMetrics/{args.method}_{args.dataset}_{args.kernel}_{args.percentile}_imputationMetrics.csv"
+
+        # Save the DataFrame to a CSV file
+        imputation_errors.to_csv(file_name, index=False)
