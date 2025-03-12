@@ -92,7 +92,7 @@ if __name__ == "__main__":
             "110",
             "113",
             "115",
-            "116",  # Not sure yet
+            "116",
             "122",
             "126",
             "127",
@@ -317,62 +317,47 @@ if __name__ == "__main__":
     # Initialize a new dictionary to store the segmented data per patient
     segmented_data_dict = {}
     segment_stats_dict = {}
-    # Loop over each patient and extract their segments based on the filtered indices
     for patient_id, filtered_segments in filtered_segments_dict.items():
-        # Get the start indices for the patient's filtered segments
         start_indices = filtered_segments["start_indices"]
         end_indices = filtered_segments["end_indices"]
 
-        # Extract the corresponding data for each segment
         patient_data = all_data_dict[
             patient_id
-        ]  # Assuming this is the full data for the patient
+        ]  
 
-        # Initialize a list to store the segmented data for the patient
         patient_segments = []
         patient_segment_stats = []
 
-        # Loop over the start indices to slice the data for each segment
         for i in range(
             len(start_indices)
-        ):  # Loop until the second-to-last index (since we're using pairs)
+        ):
             start_idx = start_indices[i]
             end_idx = end_indices[i]
 
-            # Extract the segment for this pair of indices
             segment_data = patient_data[start_idx : end_idx + 1]["cbg"]
-
-            # Calculate the length of the segment
             segment_length = len(segment_data)
 
-            # Count the number of NaN values in the segment
             num_nan_values = np.sum(np.isnan(segment_data))
 
             if segment_length == 288:
-                # Append the segment to the patient's list of segments
                 patient_segments.append(np.array(segment_data))
 
-                # Store the statistics (length and NaN count) for this segment
                 patient_segment_stats.append(
                     {"segment_length": segment_length, "num_nan_values": num_nan_values}
                 )
         if len(patient_segments) != 0:
-            # Store the segmented data in the dictionary, using the patient_id as the key
             segmented_data_dict[patient_id] = patient_segments
             segment_stats_dict[patient_id] = patient_segment_stats
 
     original_segments = segmented_data_dict
 
     # 2. censored segments
-    # Dictionary for storing the interpolated data for each patient
     censored_segments = {}
     censored_thresh = {}
     censored_segment_indices = {}
     thresh_data = {}
 
-    # Assuming 'original_data' is a dictionary with patient data, and each entry is a 1D array of continuous data points
     for patient_id, segments in original_segments.items():
-        # Store interpolated segments for the current patient
         censored_segments[patient_id] = []
         censored_thresh[patient_id] = []
         censored_segment_indices[patient_id] = []
@@ -388,10 +373,8 @@ if __name__ == "__main__":
                 filtered_segment = filtered_segment[
                     filtered_segment < np.max(filtered_segment)
                 ]  # Exclude the max value
-                # Compute the quantile on the filtered dataset
                 thresh = np.quantile(filtered_segment, args.percentile)
                 print("new thresh = ", thresh)
-            # pint("thresh = ", thresh)
             censored_thresh[patient_id].append(thresh)
             censored_segment = np.where(segment > thresh, np.nan, segment)
             censored_segment_index = np.where(segment > thresh)
@@ -461,25 +444,21 @@ if __name__ == "__main__":
         for patient_id, segments in censored_segments.items():
             interpolated_segments_gp[patient_id] = []
             for i in range(len(segments)):
-                # Convert segment to DataFrame to use interpolation functions
                 segment_df = pd.DataFrame(segments[i], columns=["cbg"])
-                # Check if there are any NaN values in the segment
                 if segment_df["cbg"].isna().any():
                     ind_all = np.where(~np.isnan(np.array(segment_df)))[0]
                     var = np.std(np.array(segment_df)[ind_all]) ** 2
-                    # Only train and infer if there are NaN values
                     gpr = train_gpr(np.array(segment_df), var=var, kernel=args.kernel)
                     indices, interpolated_segment, std = inference_gpr(
                         censored_segment_indices[patient_id][i][0], gpr
                     )
 
-                    # Create a copy of the original segment and replace NaNs with interpolated values
-                    indices = indices.flatten()  # Ensure `indices` is a flat array
+                    indices = indices.flatten()
                     full_interpolated_segment = np.array(segment_df).flatten().copy()
 
                     full_interpolated_segment[indices] = np.array(
                         interpolated_segment
-                    ).flatten()  # Replace NaNs with interpolated values
+                    ).flatten() 
                     interpolated_segments_gp[patient_id].append(
                         full_interpolated_segment
                     )
@@ -512,7 +491,6 @@ if __name__ == "__main__":
             f"results/{args.dataset}",
             exist_ok=True,
         )
-        # Construct the file name
         file_name = f"results/{args.dataset}/{args.method}_{args.dataset}_{args.kernel}_{args.percentile}.csv"
 
         # Save the DataFrame to a CSV file
@@ -548,7 +526,6 @@ if __name__ == "__main__":
                 ]
             ]
         )
-        # Construct the file name
         file_name = f"results/{args.dataset}/imputationMetrics/{args.method}_{args.dataset}_{args.kernel}_{args.percentile}_imputationMetrics.csv"
 
         # Save the DataFrame to a CSV file

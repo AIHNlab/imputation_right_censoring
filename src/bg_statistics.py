@@ -194,10 +194,7 @@ def compute_errors_flatten(
         "R² between true and ffill values": [r2_bfill],
     }
 
-    # Construct the file name
     file_name = f"results/{args.dataset}/imputationMetrics/{args.method}_{args.dataset}_{args.kernel}_{args.percentile}_imputationMetricsFlatten.csv"
-
-    # Save the DataFrame to a CSV file
     pd.DataFrame(results).to_csv(file_name, index=False)
 
     return pd.DataFrame(results)

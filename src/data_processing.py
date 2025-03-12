@@ -15,18 +15,13 @@ def fill_intervals_with_nan(
     Returns:
     - pd.DataFrame: The modified dataframe with added rows containing NaN values.
     """
-    # Convert Tid to datetime
     df[time_col] = pd.to_datetime(df[time_col], format="%d/%m/%Y %H:%M")
-
-    # Calculate time differences in minutes
     df["time_diff"] = df[time_col].diff().dt.total_seconds() / 60
 
-    # Loop through the dataframe to find gaps larger than 15 minutes
     new_rows = []
     for i in range(1, len(df)):
         gap = df.loc[i, "time_diff"]
         if gap > 5:
-            # Find the start and end times of the gap
             start_time = df.loc[i - 1, time_col]
             end_time = df.loc[i, time_col]
 
@@ -49,15 +44,11 @@ def fill_intervals_with_nan(
         # Filter out columns that are entirely NaN before concatenation
         new_df = new_df.dropna(axis=1, how="all")
 
-        # Concatenate the original dataframe with the new rows
         df = pd.concat([df, new_df], ignore_index=True)
         df = df.sort_values(by=time_col).reset_index(drop=True)
         # Remove duplicate timestamps
         df = df.drop_duplicates(subset=[time_col], keep="first")
 
-        # df['Tid'] = df['Tid'].dt.strftime('%d/%m/%Y %H:%M')
-
-    # Clean up the temporary columns
     df.drop(columns=["time_diff"], inplace=True)
 
     return df
@@ -85,7 +76,6 @@ def get_daily_segments_loc(data_dict: dict, col: str) -> dict:
         # Get indices for all entries (including NaN values) in the specified column
         all_indices = np.asarray(data_dict[index].index)
 
-        # Initialize start and end indices for the segments
         start_indices = []
         end_indices = []
 
@@ -94,10 +84,10 @@ def get_daily_segments_loc(data_dict: dict, col: str) -> dict:
         for i in range(0, len(all_indices), max_length):
             end = min(
                 start + max_length - 1, all_indices[-1]
-            )  # Ensure the end doesn't exceed the last index
+            ) 
             start_indices.append(start)
             end_indices.append(end)
-            start = end + 1  # Update the start for the next segment
+            start = end + 1
 
         # Compute segment lengths
         lengths = (np.array(end_indices) - np.array(start_indices)) + 1
@@ -127,28 +117,22 @@ def check_and_filter_nan_segments(
     """
     filtered_segments = {}
 
-    # Initialize start and end indices for each segment
     start_indices = []
     end_indices = []
-    nan_lengths = []  # To store the length of consecutive NaNs in each segment
+    nan_lengths = [] 
 
     for segment_start, segment_end in zip(
         segments_loc["start_indices"], segments_loc["end_indices"]
     ):
-        # Slice the segment from the DataFrame
         segment_data = data.iloc[segment_start : segment_end + 1][col]
 
         # Find continuous NaN sequences within this segment
         # Generate a mask of NaN values (True for NaN)
         is_nan = segment_data.isna()
-
-        # Use a counter for consecutive NaNs and identify sequences
         nan_sequences = is_nan.groupby((~is_nan).cumsum()).cumsum()
 
         # Find the maximum consecutive NaN sequence length in this segment
         max_nan_in_segment = nan_sequences.max() if not nan_sequences.empty else 0
-        # print("max_nan_in_segment = ", max_nan_in_segment)
-        # Count the number of NaN values in the segment
         num_nan_values = np.sum(np.isnan(segment_data))
 
         num_nan_values = np.isnan(segment_data).sum()
@@ -156,12 +140,9 @@ def check_and_filter_nan_segments(
 
         # Check if the segment has fewer than the max allowed consecutive NaNs
         if max_nan_in_segment < max_nan_length and nan_ratio < 0.5:
-            # If valid, store the start and end indices, and the segment's length
             start_indices.append(segment_start)
             end_indices.append(segment_end)
             nan_lengths.append(max_nan_in_segment)
-        # else:
-        #     print("too many Nan's")
 
     filtered_segments = {
         "start_indices": start_indices,

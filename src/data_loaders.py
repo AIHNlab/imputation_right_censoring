@@ -27,12 +27,9 @@ def calculate_percentage_above_threshold(
     if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Create a DataFrame to store the result
     percentage_df = pd.DataFrame(
         {"Percentage_Above_Threshold": [percentage_above_threshold]}
     )
-
-    # Save the result to the specified CSV file
     percentage_df.to_csv(output_file, index=False)
 
     return percentage_df
@@ -64,7 +61,7 @@ def load_data_ohio(patient_ids, include_test=False):
             [pd.read_csv(path) for path in train_paths if os.path.exists(path)],
             ignore_index=True,
         )
-        # train_data = raw_train_data.copy()
+        
         train_data = deepcopy(raw_train_data)
         train_data["timestamp"] = pd.to_datetime(
             train_data["5minute_intervals_timestamp"], unit="s"
@@ -218,12 +215,8 @@ def load_data_glucobench(dataset_name):
     # Initialize an empty dictionary to store DataFrames for each patient
     all_data_dict = {}
     percentage_per_patient = []
-    # Iterate over the unique patient IDs in the DataFrame
     for patient_id in data["id"].unique():
-        # Filter the DataFrame for the current patient_id
         patient_data = data[data["id"] == patient_id].copy()
-
-        # Ensure "Tid" is in datetime format for proper processing
         patient_data["Tid"] = pd.to_datetime(patient_data["Tid"])
 
         # Sort the DataFrame by "Tid"
@@ -249,7 +242,6 @@ def load_data_glucobench(dataset_name):
         patient_data.loc[patient_data["cbg"] > 22.1, "cbg"] = np.nan
 
         if len(patient_data) >= 288:
-            # Store the patient-specific DataFrame in the dictionary
             all_data_dict[patient_id] = patient_data
 
     # After processing all patients, calculate the weighted average percentage of values exceeding 22.1 mmol/L for the entire dataset

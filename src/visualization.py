@@ -45,7 +45,7 @@ def visualize_original_interpolated(
             interpolated_segment, color="orange", label="Interpolated Data", alpha=0.8
         )
         axes[1].plot(original_segment, color="purple", label="Original Data")
-        axes[1].set_ylim([y_min, y_max])  # Set shared y-axis limits
+        axes[1].set_ylim([y_min, y_max])
         axes[1].set_title(
             f"Patient {patient_id} | {method_name} on Right-cencored Data"
         )
@@ -53,7 +53,7 @@ def visualize_original_interpolated(
         axes[1].set_ylabel("CGM (mmol/L)")
         axes[1].grid(
             True, which="both", linestyle="--", linewidth=0.5
-        )  # Specify grid line style and width
+        )
 
         axes[0].plot(original_patient_data, color="purple")
         axes[0].plot(
@@ -62,7 +62,7 @@ def visualize_original_interpolated(
             linestyle="--",
             label=str(args.percentile * 100) + "th Percentile Threshold",
         )
-        axes[0].set_ylim([y_min, y_max])  # Set shared y-axis limits
+        axes[0].set_ylim([y_min, y_max])
         axes[0].set_title(
             f"Patient {patient_id} | Quantile-Cut Data ({args.percentile * 100}th Percentile)"
         )
@@ -70,7 +70,7 @@ def visualize_original_interpolated(
         axes[0].set_ylabel("CGM (mmol/L)")
         axes[0].grid(
             True, which="both", linestyle="--", linewidth=0.5
-        )  # Specify grid line style and width
+        )
 
         plt.tight_layout()
         os.makedirs(

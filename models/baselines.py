@@ -15,7 +15,7 @@ def naive_baseline_imputation(data, method="ffill", order=2):
                 interpolated_segment = segment_df.interpolate(
                     method="polynomial", order=2
                 )
-            elif method == "cubic":  # Use 'cubic' for cubic spline interpolation
+            elif method == "cubic":
                 interpolated_segment = segment_df.interpolate(method="cubic")
             elif method == "ffill":
                 interpolated_segment = segment_df.ffill()
