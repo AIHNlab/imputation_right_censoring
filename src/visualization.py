@@ -47,13 +47,14 @@ def visualize_original_interpolated(
         axes[1].plot(original_segment, color="purple", label="Original Data")
         axes[1].set_ylim([y_min, y_max])
         axes[1].set_title(
-            f"Patient {patient_id} | {method_name} on Right-cencored Data"
+            f"Patient {patient_id} | {method_name} on Right-cencored Data", fontsize=14
         )
-        axes[1].set_xlabel("Time (minutes)")
-        axes[1].set_ylabel("CGM (mmol/L)")
+        axes[1].set_xlabel("Time (minutes)", fontsize=14)
+        axes[1].set_ylabel("CGM (mmol/L)", fontsize=14)
         axes[1].grid(
             True, which="both", linestyle="--", linewidth=0.5
         )
+        axes[1].tick_params(axis="both", labelsize=14)
 
         axes[0].plot(original_patient_data, color="purple")
         axes[0].plot(
@@ -64,13 +65,14 @@ def visualize_original_interpolated(
         )
         axes[0].set_ylim([y_min, y_max])
         axes[0].set_title(
-            f"Patient {patient_id} | Quantile-Cut Data ({args.percentile * 100}th Percentile)"
+            f"Patient {patient_id} | Quantile-Cut Data ({args.percentile * 100}th Percentile)", fontsize=14
         )
-        axes[0].set_xlabel("Time (minutes)")
-        axes[0].set_ylabel("CGM (mmol/L)")
+        axes[0].set_xlabel("Time (minutes)", fontsize=14)
+        axes[0].set_ylabel("CGM (mmol/L)", fontsize=14)
         axes[0].grid(
             True, which="both", linestyle="--", linewidth=0.5
         )
+        axes[0].tick_params(axis="both", labelsize=14)
 
         plt.tight_layout()
         os.makedirs(
@@ -78,7 +80,9 @@ def visualize_original_interpolated(
             exist_ok=True,
         )
         plt.savefig(
-            f"figures/{args.method}/{args.dataset}/{args.kernel}_{args.percentile}/{patient_id}.png"
+            f"figures/{args.method}/{args.dataset}/{args.kernel}_{args.percentile}/{patient_id}.png",
+            dpi=1200,
+            bbox_inches="tight"
         )
 
         plt.close()
