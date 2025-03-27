@@ -90,6 +90,9 @@ def compare_statistics(bg_original, bg_before_imputation, bg_after_imputation):
         "Bias After Imputation": [],
         "MSE Before Imputation": [],
         "MSE After Imputation": [],
+        "R-squared Before Imputation": [],
+        "R-squared After Imputation": [],
+        
     }
 
     # Metrics to compare
@@ -111,6 +114,8 @@ def compare_statistics(bg_original, bg_before_imputation, bg_after_imputation):
         mse_after = (
             (statistic_after_imputation[metric] - statistic_original[metric]) ** 2
         ).mean()
+        r2_before = r2_score(statistic_before_imputation[metric], statistic_original[metric])
+        r2_after = r2_score(statistic_after_imputation[metric], statistic_original[metric])
 
         # Append to results
         if metric == "CV":
@@ -119,12 +124,16 @@ def compare_statistics(bg_original, bg_before_imputation, bg_after_imputation):
             results["Bias After Imputation"].append(bias_after*100)
             results["MSE Before Imputation"].append(mse_before*100)
             results["MSE After Imputation"].append(mse_after*100)
+            results["R-squared Before Imputation"].append(r2_before)
+            results["R-squared After Imputation"].append(r2_after)
         else:
             results["Metric"].append(metric)
             results["Bias Before Imputation"].append(bias_before)
             results["Bias After Imputation"].append(bias_after)
             results["MSE Before Imputation"].append(mse_before)
             results["MSE After Imputation"].append(mse_after)
+            results["R-squared Before Imputation"].append(r2_before)
+            results["R-squared After Imputation"].append(r2_after)
 
     # Return results as DataFrame
     results_df = pd.DataFrame(results)
